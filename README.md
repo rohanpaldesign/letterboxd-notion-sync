@@ -25,8 +25,13 @@ It never touches your factor ratings, `Rating`, `LB Recommended`, `Feels`, `Coun
 `Private Notes`. Re-runs match on `LB URL` → normalized title+year → title, so rows are **updated,
 never duplicated** (a Watchlist row you already had flips to Watched instead of doubling up).
 
-Not covered by design: TV/web series (not on Letterboxd), your Letterboxd *watchlist* (the diary feed
-only carries watched/rated films), and pushing anything back to Letterboxd.
+**Watchlist too.** After the diary pass, the sync also reads your public Letterboxd **watchlist**
+(scraped from the watchlist pages, since there's no watchlist RSS) and creates a Notion `Watchlist`
+row for any film not already there. It never downgrades a `Watched` row, never writes a rating, and
+on existing rows only backfills `LB URL`/`Year` when missing. Removing a film from the Letterboxd
+watchlist does nothing in Notion (Notion stays master — you delete rows yourself).
+
+Not covered by design: TV/web series (not on Letterboxd) and pushing anything back to Letterboxd.
 
 ## One-time setup
 

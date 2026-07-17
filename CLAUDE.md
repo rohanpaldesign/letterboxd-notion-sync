@@ -22,10 +22,19 @@ enters ratings on Letterboxd manually.
   `Year`, `LB URL`, `Public Review` (only if empty), and on create only `Name` + `Type`=Movie.
 - Never touched: factor selects, `Rating`, `LB Recommended`, `Feels`, `Country`, `Private Notes`.
 
+## Watchlist (iteration 2)
+Diary RSS carries only watched/rated films; `…/watchlist/rss/` is 403. So the watchlist is scraped
+from the public HTML pages (`…/watchlist/page/<N>/`), where each poster div exposes
+`data-item-slug`, `data-item-link`, `data-item-name="Title (YYYY)"`. The watchlist pass runs after
+the diary pass and only **creates** a `Watchlist` row if the film isn't already in Notion; it never
+downgrades a `Watched` row and never writes a rating/date. LB-watchlist removals do nothing in Notion.
+
 ## Layout
 - `src/letterboxd.js` — RSS fetch/parse + title normalization + per-film aggregation.
-- `src/notion.js` — Notion client, row indexing, match (LB URL -> title+year -> title), upsert.
-- `src/sync.js` — entry point.
+- `src/watchlist.js` — scrapes the public watchlist pages (`fetchWatchlist`).
+- `src/notion.js` — Notion client, row indexing, match (LB URL -> title+year -> title), `upsertFilm`
+  (diary) and `upsertWatchlistFilm` (create-if-absent).
+- `src/sync.js` — entry point: diary pass then watchlist pass.
 - `.github/workflows/sync.yml` — daily cron + manual dispatch.
 
 ## Secrets (GitHub repo Settings -> Secrets and variables -> Actions)

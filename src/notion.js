@@ -50,6 +50,16 @@ export function buildIndex(pages) {
   return { byUrl, byTitleYear, byTitle };
 }
 
+// Insert a freshly-created/updated page into the in-memory index so later films in the
+// same run match it instead of creating a duplicate.
+function indexPage(index, page, film) {
+  index.byUrl.set(trimSlash(film.filmUrl), page);
+  const nt = normalizeTitle(film.title);
+  if (!nt) return;
+  if (film.year) index.byTitleYear.set(`${nt}|${film.year}`, page);
+  if (!index.byTitle.has(nt)) index.byTitle.set(nt, page);
+}
+
 export function findMatch(index, film) {
   if (index.byUrl.has(trimSlash(film.filmUrl))) {
     return index.byUrl.get(trimSlash(film.filmUrl));
@@ -101,9 +111,38 @@ export async function upsertFilm(index, film) {
   const props = buildProps(film, null);
   props.Name = { title: [{ text: { content: film.title } }] };
   props.Type = { select: { name: 'Movie' } }; // sensible default, create only
-  await notion.pages.create({
+  const page = await notion.pages.create({
     parent: { database_id: DATABASE_ID },
     properties: props,
   });
+  indexPage(index, page, film);
+  return { action: 'created' };
+}
+
+// Watchlist upsert: create a Watchlist row only if the film isn't already in Notion.
+// Never changes Status (so a Watched row is never downgraded) and never writes rating/date;
+// on an existing row it only backfills LB URL / Year when those are missing.
+export async function upsertWatchlistFilm(index, film) {
+  const existing = findMatch(index, film);
+  if (existing) {
+    const props = {};
+    if (!urlOf(existing, 'LB URL')) props['LB URL'] = { url: film.filmUrl };
+    if (film.year && numberOf(existing, 'Year') == null) props.Year = { number: film.year };
+    if (Object.keys(props).length === 0) return { action: 'skipped' };
+    await notion.pages.update({ page_id: existing.id, properties: props });
+    return { action: 'backfilled' };
+  }
+  const props = {
+    Name: { title: [{ text: { content: film.title } }] },
+    Status: { select: { name: 'Watchlist' } },
+    Type: { select: { name: 'Movie' } },
+    'LB URL': { url: film.filmUrl },
+  };
+  if (film.year) props.Year = { number: film.year };
+  const page = await notion.pages.create({
+    parent: { database_id: DATABASE_ID },
+    properties: props,
+  });
+  indexPage(index, page, film);
   return { action: 'created' };
 }
