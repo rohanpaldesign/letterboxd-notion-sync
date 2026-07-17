@@ -1,0 +1,17 @@
+{
+  "name": "letterboxd-notion-sync",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "One-way sync: Letterboxd diary + ratings -> Notion movie database.",
+  "scripts": {
+    "sync": "node src/sync.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "rss-parser": "^3.13.0"
+  }
+}
