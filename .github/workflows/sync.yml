@@ -2,17 +2,17 @@ name: Letterboxd -> Notion sync
 
 on:
   schedule:
-    - cron: '0 6 * * *' # daily at 06:00 UTC
+    - cron: '0 12 * * *' # daily at 12:00 UTC (4 AM PST / 5 AM PDT)
   workflow_dispatch: {} # manual "Run workflow" button
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
       - run: npm install --no-audit --no-fund
       - run: node src/sync.js
         env:
@@ -20,3 +20,7 @@ jobs:
           LETTERBOXD_USERNAME: ${{ secrets.LETTERBOXD_USERNAME }}
           # NOTION_DATABASE_ID is optional; defaults to the "To Watch" database in code.
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          # Uncertain matches are sent here for manual review (Alki OS /watching/update).
+          # Optional: if unset, uncertain items are just logged.
+          ALKI_INGEST_URL: ${{ secrets.ALKI_INGEST_URL }}
+          ALKI_INGEST_TOKEN: ${{ secrets.ALKI_INGEST_TOKEN }}

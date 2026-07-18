@@ -1,22 +1,23 @@
-// Notion side of the sync: load existing rows, match, and upsert Letterboxd films.
+// Notion side of the sync: load existing rows and upsert Letterboxd films.
+// Match classification (incl. uncertainty detection) lives in ./match.js (dependency-free).
 import { Client } from '@notionhq/client';
-import { normalizeTitle } from './letterboxd.js';
+import {
+  buildIndex,
+  classifyMatch,
+  indexPage,
+  numberOf,
+  urlOf,
+  textOf,
+  dateOf,
+} from './match.js';
+
+export { buildIndex };
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 
 // The "To Watch" database id. Not secret (just an id); overridable via env.
 const DATABASE_ID =
   process.env.NOTION_DATABASE_ID || '3601a6b9-4cec-4e5f-8571-8603dc40f74b';
-
-const titleOf = (page) =>
-  (page.properties?.Name?.title || []).map((t) => t.plain_text).join('');
-const numberOf = (page, name) => page.properties?.[name]?.number ?? null;
-const urlOf = (page, name) => page.properties?.[name]?.url ?? null;
-const textOf = (page, name) =>
-  (page.properties?.[name]?.rich_text || []).map((t) => t.plain_text).join('');
-const dateOf = (page, name) => page.properties?.[name]?.date?.start ?? null;
-
-const trimSlash = (u) => (u || '').replace(/\/+$/, '');
 
 export async function loadPages() {
   const pages = [];
@@ -33,47 +34,8 @@ export async function loadPages() {
   return pages;
 }
 
-// Build lookup maps for matching: strongest (LB URL) -> title+year -> title-only.
-export function buildIndex(pages) {
-  const byUrl = new Map();
-  const byTitleYear = new Map();
-  const byTitle = new Map();
-  for (const page of pages) {
-    const url = urlOf(page, 'LB URL');
-    if (url) byUrl.set(trimSlash(url), page);
-    const nt = normalizeTitle(titleOf(page));
-    if (!nt) continue;
-    const year = numberOf(page, 'Year');
-    if (year) byTitleYear.set(`${nt}|${year}`, page);
-    if (!byTitle.has(nt)) byTitle.set(nt, page); // first wins; title-only is a fallback
-  }
-  return { byUrl, byTitleYear, byTitle };
-}
-
-// Insert a freshly-created/updated page into the in-memory index so later films in the
-// same run match it instead of creating a duplicate.
-function indexPage(index, page, film) {
-  index.byUrl.set(trimSlash(film.filmUrl), page);
-  const nt = normalizeTitle(film.title);
-  if (!nt) return;
-  if (film.year) index.byTitleYear.set(`${nt}|${film.year}`, page);
-  if (!index.byTitle.has(nt)) index.byTitle.set(nt, page);
-}
-
-export function findMatch(index, film) {
-  if (index.byUrl.has(trimSlash(film.filmUrl))) {
-    return index.byUrl.get(trimSlash(film.filmUrl));
-  }
-  const nt = normalizeTitle(film.title);
-  if (film.year && index.byTitleYear.has(`${nt}|${film.year}`)) {
-    return index.byTitleYear.get(`${nt}|${film.year}`);
-  }
-  if (index.byTitle.has(nt)) return index.byTitle.get(nt);
-  return null;
-}
-
-// Properties written on every upsert. Deliberately never touches factor selects,
-// Rating, LB Recommended, Feels, Country, Private Notes, or (on update) Type.
+// Properties written on a diary upsert. Never touches factor selects, Rating, LB Recommended,
+// Feels, Country, Private Notes, or (on update) Type.
 function buildProps(film, existing) {
   const props = {};
   props.Status = { select: { name: 'Watched' } };
@@ -88,8 +50,6 @@ function buildProps(film, existing) {
   if (film.year) props.Year = { number: film.year };
   props['LB URL'] = { url: film.filmUrl };
 
-  // Seed the public review only if we don't already have one, so we never clobber
-  // a review Rohan wrote/edited in Notion.
   const existingReview = existing ? textOf(existing, 'Public Review') : '';
   if (film.review && !existingReview) {
     props['Public Review'] = {
@@ -99,12 +59,16 @@ function buildProps(film, existing) {
   return props;
 }
 
+// Diary upsert. Returns { action: 'updated' | 'created' | 'uncertain', reason?, candidates? }.
 export async function upsertFilm(index, film) {
-  const existing = findMatch(index, film);
-  if (existing) {
+  const match = classifyMatch(index, film);
+  if (match.kind === 'uncertain') {
+    return { action: 'uncertain', reason: match.reason, candidates: match.candidates };
+  }
+  if (match.kind === 'confident') {
     await notion.pages.update({
-      page_id: existing.id,
-      properties: buildProps(film, existing),
+      page_id: match.page.id,
+      properties: buildProps(film, match.page),
     });
     return { action: 'updated' };
   }
@@ -119,12 +83,17 @@ export async function upsertFilm(index, film) {
   return { action: 'created' };
 }
 
-// Watchlist upsert: create a Watchlist row only if the film isn't already in Notion.
-// Never changes Status (so a Watched row is never downgraded) and never writes rating/date;
-// on an existing row it only backfills LB URL / Year when those are missing.
+// Watchlist upsert: create a Watchlist row only if the film clearly isn't already in Notion.
+// Confident match -> only backfill LB URL / Year (never downgrades a Watched row, never rates).
+// Uncertain -> write nothing, flag for review.
+// Returns { action: 'created' | 'backfilled' | 'skipped' | 'uncertain', reason?, candidates? }.
 export async function upsertWatchlistFilm(index, film) {
-  const existing = findMatch(index, film);
-  if (existing) {
+  const match = classifyMatch(index, film);
+  if (match.kind === 'uncertain') {
+    return { action: 'uncertain', reason: match.reason, candidates: match.candidates };
+  }
+  if (match.kind === 'confident') {
+    const existing = match.page;
     const props = {};
     if (!urlOf(existing, 'LB URL')) props['LB URL'] = { url: film.filmUrl };
     if (film.year && numberOf(existing, 'Year') == null) props.Year = { number: film.year };

@@ -2,6 +2,8 @@
 // The RSS feed carries only the ~50 most recent diary entries (no auth needed).
 import Parser from 'rss-parser';
 
+export { normalizeTitle } from './match.js';
+
 const parser = new Parser({
   customFields: {
     item: [
@@ -14,20 +16,6 @@ const parser = new Parser({
     ],
   },
 });
-
-// Aggressive title normalization for matching Notion rows against Letterboxd films.
-// Strips accents/punctuation/articles so "Dune: Part Two" ~ "dune part two".
-export function normalizeTitle(title) {
-  return String(title || '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // strip diacritics
-    .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9]+/g, ' ') // punctuation -> space
-    .replace(/\b(the|a|an)\b/g, ' ') // drop leading articles
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 // A Letterboxd film slug uniquely identifies a film; the diary entry <link> looks like
 // https://letterboxd.com/<user>/film/<slug>/<optional-date>/ so we pull <slug> out.

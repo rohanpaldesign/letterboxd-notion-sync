@@ -29,13 +29,22 @@ from the public HTML pages (`…/watchlist/page/<N>/`), where each poster div ex
 the diary pass and only **creates** a `Watchlist` row if the film isn't already in Notion; it never
 downgrades a `Watched` row and never writes a rating/date. LB-watchlist removals do nothing in Notion.
 
+## Duplicate-safety + review queue (iteration 3)
+`classifyMatch` (in `src/match.js`) returns `confident` / `uncertain` / `new`. Uncertain =
+fuzzy near-title (token Dice >= 0.5 or full token-containment), a title match with a conflicting
+`Year`, or an ambiguous title (multiple rows). Uncertain films are **not written**; `sync.js`
+collects them and POSTs `{ reviews:[{lbUrl,lbTitle,lbYear,lbRating,watchedDate,source,reason,
+candidates}] }` to Alki OS (`ALKI_INGEST_URL` + `ALKI_INGEST_TOKEN`, header `x-alki-token`) where
+`/watching/update` lists them for manual handling. If the Alki env is unset, uncertain items are just
+logged. Sending the current set every run lets Alki auto-close resolved items.
+
 ## Layout
-- `src/letterboxd.js` — RSS fetch/parse + title normalization + per-film aggregation.
+- `src/match.js` — dependency-free matching core: `normalizeTitle`, `buildIndex`, `classifyMatch`.
+- `src/letterboxd.js` — RSS fetch/parse + per-film aggregation (re-exports `normalizeTitle`).
 - `src/watchlist.js` — scrapes the public watchlist pages (`fetchWatchlist`).
-- `src/notion.js` — Notion client, row indexing, match (LB URL -> title+year -> title), `upsertFilm`
-  (diary) and `upsertWatchlistFilm` (create-if-absent).
-- `src/sync.js` — entry point: diary pass then watchlist pass.
-- `.github/workflows/sync.yml` — daily cron + manual dispatch.
+- `src/notion.js` — Notion client, `loadPages`, `upsertFilm` (diary), `upsertWatchlistFilm`.
+- `src/sync.js` — entry point: diary pass, watchlist pass, then upload reviews to Alki.
+- `.github/workflows/sync.yml` — daily cron (12:00 UTC) + manual dispatch.
 
 ## Secrets (GitHub repo Settings -> Secrets and variables -> Actions)
 - `NOTION_TOKEN` — internal integration token; the "To Watch" DB must be shared with it.

@@ -31,6 +31,14 @@ row for any film not already there. It never downgrades a `Watched` row, never w
 on existing rows only backfills `LB URL`/`Year` when missing. Removing a film from the Letterboxd
 watchlist does nothing in Notion (Notion stays master — you delete rows yourself).
 
+**Duplicate-safety.** Before creating or merging a row, the sync checks how confident the match is.
+If it's unsure a Letterboxd film maps to an existing Notion row -- a close-but-different title, a
+title match with a conflicting year, or an ambiguous title hitting multiple rows -- it **writes
+nothing** and flags the film for review instead of risking a duplicate. Flagged items are sent to the
+Alki OS **`/watching/update`** page (via `ALKI_INGEST_URL` + `ALKI_INGEST_TOKEN`; if those aren't set,
+they're just logged). You resolve each one manually in Notion, and it clears from the list on the next
+run.
+
 Not covered by design: TV/web series (not on Letterboxd) and pushing anything back to Letterboxd.
 
 ## One-time setup
