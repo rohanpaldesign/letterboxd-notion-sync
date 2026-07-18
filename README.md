@@ -84,3 +84,7 @@ node src/sync.js
 
 `src/letterboxd.js` fetches and parses the RSS feed; `src/notion.js` indexes existing rows and
 upserts; `src/sync.js` ties them together. See `CLAUDE.md` for internals.
+
+## Documentation
+
+Detailed docs live in [`docs/`](./docs/) - architecture, Notion schema, matching & duplicate-safety, the Alki OS review queue, an operating guide, setup/secrets, and a changelog.
